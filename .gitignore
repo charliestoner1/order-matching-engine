@@ -1,0 +1,58 @@
+# CLion
+.idea/
+cmake-build-*/
+
+# Build directories
+build/
+out/
+bin/
+lib/
+
+# IDE files
+.vscode/
+*.swp
+*.swo
+*~
+.cache/
+
+# Compiled files
+*.o
+*.so
+*.a
+*.exe
+*.out
+*.dll
+*.dylib
+
+# Data files
+data/*.csv
+data/*.bin
+!data/sample_orders.csv
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Documentation build
+docs/html/
+docs/latex/
+*.doxygen
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+
+# Logs
+*.log
+logs/
+
+# Profiling
+*.prof
+perf.data
+perf.data.old
+callgrind.out.*
