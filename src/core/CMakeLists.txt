@@ -2,10 +2,7 @@
 
 # Create core library
 add_library(order_matching_core STATIC
-    Order.cpp
-    OrderBook.cpp
-    MatchingEngine.cpp
-    Trade.cpp
+        OrderBook.cpp
 )
 
 # Set include directories

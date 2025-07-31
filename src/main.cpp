@@ -1,23 +1,20 @@
 #include <iostream>
-#include <memory>
-#include "core/Order.h"
-
+#include "core/MatchingEngine.h"
+#include "implementations/BTreeOrderBook.h"
 using namespace order_matching;
 
 int main() {
     std::cout << "Order Matching Engine v1.0.0" << std::endl;
-    std::cout << "==========================" << std::endl;
+    std::cout << "===========================" << std::endl;
 
-    // Test order creation
-    Order test_order(1001, Side::BUY, 50000.0, 1.5, "BTCUSD");
+    MatchingEngine engine;
+    engine.create_order_book("AAPL", std::make_unique<BTreeOrderBook>("AAPL"));
 
-    std::cout << "\nTest Order Created:" << std::endl;
-    std::cout << "  Order ID: " << test_order.get_order_id() << std::endl;
-    std::cout << "  Side: " << to_string(test_order.get_side()) << std::endl;
-    std::cout << "  Price: $" << test_order.get_price() << std::endl;
-    std::cout << "  Quantity: " << test_order.get_quantity() << std::endl;
-    std::cout << "  Symbol: " << test_order.get_symbol() << std::endl;
-    std::cout << "  Status: " << to_string(test_order.get_status()) << std::endl;
+    auto order = std::make_shared<Order>(1, BUY, 100.0, 10, "AAPL");
+    if (engine.submit_order(order)) {
+        std::cout << "Order submitted successfully!" << std::endl;
+        std::cout << "Best bid: $" << engine.get_best_bid("AAPL") << std::endl;
+    }
 
     return 0;
 }

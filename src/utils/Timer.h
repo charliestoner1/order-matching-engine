@@ -1,81 +1,52 @@
 #pragma once
 
 #include <chrono>
-#include <string>
 #include <iostream>
-#include <functional>
 
-namespace order_matching::utils {
+namespace order_matching {
+    namespace utils {
 
-// High-precision timer for performance measurement
-class Timer {
-public:
-    using Clock = std::chrono::high_resolution_clock;
-    using TimePoint = Clock::time_point;
-    using Duration = std::chrono::nanoseconds;
+        class Timer {
+        private:
+            std::chrono::high_resolution_clock::time_point start_time;
 
-    Timer() : start_time_(Clock::now()) {}
+        public:
 
-    // Start or restart the timer
-    void start() noexcept {
-        start_time_ = Clock::now();
-    }
+            Timer() : start_time(std::chrono::high_resolution_clock::now()) {}
 
-    // Get elapsed time in nanoseconds
-    [[nodiscard]] Duration elapsed() const noexcept {
-        return std::chrono::duration_cast<Duration>(Clock::now() - start_time_);
-    }
+            void start() {
+                start_time = std::chrono::high_resolution_clock::now();
+            }
 
-    // Get elapsed time in microseconds
-    [[nodiscard]] double elapsed_microseconds() const noexcept {
-        return std::chrono::duration<double, std::micro>(elapsed()).count();
-    }
+            double elapsed_microseconds() const {
+                auto end_time = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+                return duration.count();
+            }
 
-    // Get elapsed time in milliseconds
-    [[nodiscard]] double elapsed_milliseconds() const noexcept {
-        return std::chrono::duration<double, std::milli>(elapsed()).count();
-    }
+            double elapsed_milliseconds() const {
+                auto end_time = std::chrono::high_resolution_clock::now();
+                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+                return duration.count();
+            }
+        };
 
-    // Reset and return elapsed time
-    [[nodiscard]] Duration reset() noexcept {
-        auto elapsed_time = elapsed();
-        start();
-        return elapsed_time;
-    }
+        // scoped timer for easy benchmarking
+        class ScopedTimer {
+        private:
+            std::string name;
+            Timer timer;
 
-private:
-    TimePoint start_time_;
-};
+        public:
+            ScopedTimer(const std::string& timer_name) : name(timer_name) {
+                std::cout << "[" << name << "] Starting..." << std::endl;
+            }
 
-// RAII timer that prints elapsed time on destruction
-class ScopedTimer {
-public:
-    explicit ScopedTimer(const std::string& name)
-        : name_(name), timer_() {
-        std::cout << "[" << name_ << "] Starting...\n";
-    }
+            ~ScopedTimer() {
+                double elapsed = timer.elapsed_microseconds();
+                std::cout << "[" << name << "] Completed in " << elapsed << " microseconds" << std::endl;
+            }
+        };
 
-    ~ScopedTimer() {
-        auto elapsed = timer_.elapsed_microseconds();
-        std::cout << "[" << name_ << "] Completed in "
-                  << elapsed << " microseconds\n";
-    }
-
-    // Delete copy/move to ensure single timing
-    ScopedTimer(const ScopedTimer&) = delete;
-    ScopedTimer& operator=(const ScopedTimer&) = delete;
-    ScopedTimer(ScopedTimer&&) = delete;
-    ScopedTimer& operator=(ScopedTimer&&) = delete;
-
-private:
-    std::string name_;
-    Timer timer_;
-};
-
-// Forward declarations for Timer.cpp functions
-std::string format_duration(Timer::Duration duration);
-void benchmark_operation(const std::string& name,
-                        std::function<void()> operation,
-                        size_t iterations = 1000);
-
-} // namespace order_matching::utils
+    } // namespace utils
+} // namespace order_matching

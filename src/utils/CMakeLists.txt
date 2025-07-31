@@ -1,9 +1,5 @@
-add_library(order_matching_utils STATIC
-    Timer.cpp
-    ThreadPool.cpp
-)
-
+add_library(order_matching_utils INTERFACE)
 target_include_directories(order_matching_utils
-    PUBLIC
+        INTERFACE
         ${CMAKE_SOURCE_DIR}/src
 )

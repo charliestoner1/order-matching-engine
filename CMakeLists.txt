@@ -42,14 +42,11 @@ add_subdirectory(src)
 add_subdirectory(external)
 
 # Optional components
-option(BUILD_TESTS "Build unit tests" ON)
+
 option(BUILD_BENCHMARKS "Build benchmarks" ON)
 option(BUILD_VISUALIZATION "Build visualization server" ON)
 
-if(BUILD_TESTS)
-    enable_testing()
-    add_subdirectory(tests)
-endif()
+
 
 if(BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)

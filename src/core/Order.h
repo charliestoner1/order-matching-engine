@@ -1,94 +1,70 @@
 #pragma once
 
 #include <chrono>
-#include <cstdint>
 #include <string>
 
 namespace order_matching {
 
-enum class Side : uint8_t {
-    BUY = 0,
-    SELL = 1
-};
+    enum Side { BUY, SELL };
 
-enum class OrderStatus : uint8_t {
-    NEW = 0,
-    PARTIALLY_FILLED = 1,
-    FILLED = 2,
-    CANCELLED = 3
-};
+    enum OrderStatus { NEW, PARTIALLY_FILLED, FILLED, CANCELLED };
 
-class Order {
-public:
-    using OrderId = uint64_t;
-    using Timestamp = std::chrono::nanoseconds;
+    class Order {
+    public:
+        typedef unsigned long OrderId;
 
-    Order() = default;
+    private:
+        OrderId order_id;
+        Side side;
+        double price;
+        double quantity;
+        double remaining_quantity;
+        std::string symbol;
+        OrderStatus status;
+        long timestamp;  // Simple timestamp
 
-    Order(OrderId id, Side side, double price, double quantity, const std::string& symbol)
-        : order_id_(id)
-        , timestamp_(std::chrono::steady_clock::now().time_since_epoch())
-        , side_(side)
-        , price_(price)
-        , quantity_(quantity)
-        , remaining_quantity_(quantity)
-        , symbol_(symbol)
-        , status_(OrderStatus::NEW) {}
-
-    // Getters
-    [[nodiscard]] OrderId get_order_id() const noexcept { return order_id_; }
-    [[nodiscard]] Timestamp get_timestamp() const noexcept { return timestamp_; }
-    [[nodiscard]] Side get_side() const noexcept { return side_; }
-    [[nodiscard]] double get_price() const noexcept { return price_; }
-    [[nodiscard]] double get_quantity() const noexcept { return quantity_; }
-    [[nodiscard]] double get_remaining_quantity() const noexcept { return remaining_quantity_; }
-    [[nodiscard]] const std::string& get_symbol() const noexcept { return symbol_; }
-    [[nodiscard]] OrderStatus get_status() const noexcept { return status_; }
-
-    // Modifiers
-    void set_remaining_quantity(double qty) noexcept {
-        remaining_quantity_ = qty;
-        if (remaining_quantity_ <= 0.0) {
-            status_ = OrderStatus::FILLED;
-        } else if (remaining_quantity_ < quantity_) {
-            status_ = OrderStatus::PARTIALLY_FILLED;
+    public:
+        Order(OrderId id, Side s, double p, double qty, const std::string& sym)
+            : order_id(id), side(s), price(p), quantity(qty),
+              remaining_quantity(qty), symbol(sym), status(NEW) {
+            timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
         }
-    }
 
-    void cancel() noexcept { status_ = OrderStatus::CANCELLED; }
+        // getters
+        OrderId get_order_id() const { return order_id; }
+        Side get_side() const { return side; }
+        double get_price() const { return price; }
+        double get_quantity() const { return quantity; }
+        double get_remaining_quantity() const { return remaining_quantity; }
+        const std::string& get_symbol() const { return symbol; }
+        OrderStatus get_status() const { return status; }
+        long get_timestamp() const { return timestamp; }
 
-    // Comparison operators for price-time priority
-    [[nodiscard]] bool has_priority_over(const Order& other) const noexcept {
-        if (price_ != other.price_) {
-            return (side_ == Side::BUY) ? (price_ > other.price_) : (price_ < other.price_);
+        // setters
+        void set_remaining_quantity(double qty) {
+            remaining_quantity = qty;
+            if (remaining_quantity <= 0) {
+                status = FILLED;
+            } else if (remaining_quantity < quantity) {
+                status = PARTIALLY_FILLED;
+            }
         }
-        return timestamp_ < other.timestamp_;
-    }
 
-private:
-    OrderId order_id_{};
-    Timestamp timestamp_{};
-    Side side_{};
-    double price_{};
-    double quantity_{};
-    double remaining_quantity_{};
-    std::string symbol_{};
-    OrderStatus status_{};
-};
+        void cancel() {
+            status = CANCELLED;
+        }
 
-// Helper functions
-[[nodiscard]] inline const char* to_string(Side side) noexcept {
-    return side == Side::BUY ? "BUY" : "SELL";
-}
+        bool is_filled() const {
+            return remaining_quantity <= 0;
+        }
 
-[[nodiscard]] inline const char* to_string(OrderStatus status) noexcept {
-    switch (status) {
-        case OrderStatus::NEW: return "NEW";
-        case OrderStatus::PARTIALLY_FILLED: return "PARTIALLY_FILLED";
-        case OrderStatus::FILLED: return "FILLED";
-        case OrderStatus::CANCELLED: return "CANCELLED";
-        default: return "UNKNOWN";
-    }
-}
+        // For price-time priority
+        bool has_priority_over(const Order& other) const {
+            if (price != other.price) {
+                return (side == BUY) ? (price > other.price) : (price < other.price);
+            }
+            return timestamp < other.timestamp;
+        }
+    };
 
 } // namespace order_matching

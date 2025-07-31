@@ -5,12 +5,12 @@ add_subdirectory(core)
 add_subdirectory(implementations)
 add_subdirectory(utils)
 
-# Create the main executable
+# Create the main executable (without benchmark)
 add_executable(order_matching_engine main.cpp)
 
 # Link libraries
 target_link_libraries(order_matching_engine
-    PRIVATE
+        PRIVATE
         order_matching_core
         order_matching_implementations
         order_matching_utils
@@ -18,6 +18,6 @@ target_link_libraries(order_matching_engine
 
 # Include directories
 target_include_directories(order_matching_engine
-    PRIVATE
+        PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
