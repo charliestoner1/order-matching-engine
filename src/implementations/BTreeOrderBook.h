@@ -74,7 +74,7 @@ private:
 
     // Helper functions
     double find_best_price(BTreeNode* root, bool find_max) const;
-    void collect_levels(BTreeNode* node, std::vector<Level>& levels, size_t& count, size_t max_levels) const;
+    void collect_levels(BTreeNode* node, std::vector<Level>& levels, size_t& count, size_t max_levels, bool reverse) const;
 };
 
 } // namespace order_matching

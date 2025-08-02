@@ -28,6 +28,9 @@ namespace order_matching {
             double price;
             double quantity;
             size_t order_count;
+
+            Level(double p, double qty, size_t orders)
+                : price(p), quantity(qty), order_count(orders) {}
         };
 
         virtual std::vector<Level> get_bid_levels(size_t max_levels = 10) const = 0;
