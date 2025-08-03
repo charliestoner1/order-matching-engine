@@ -23,15 +23,19 @@ bool BTreeOrderBook::add_order(std::shared_ptr<Order> order) {
         return false;
     }
 
-    // TODO: Implement B-Tree insertion
-    // For now-increment counters
+    // insert into appropriate tree
     if (order->get_side() == BUY) {
+        insert(buy_tree_root_, order->get_price(), order, true);
         ++bid_count_;
     } else {
+        insert(sell_tree_root_, order->get_price(), order, false);
         ++ask_count_;
     }
-    ++total_orders_;
 
+    // track order location for fast cancellation
+    order_location_[order->get_order_id()] = make_pair(order->get_side(), order->get_price());
+
+    ++total_orders_;
     return true;
 }
 
@@ -57,10 +61,18 @@ bool BTreeOrderBook::cancel_order(Order::OrderId order_id) {
     deque<shared_ptr<Order>>& orders = priceLvl->orders;
     for (auto it = orders.begin(); it != orders.end(); ++it) {
         if ((*it)->get_order_id() == order_id) {
+            (*it)->cancel(); // mark order as cancelled
             orders.erase(it);
             order_location_.erase(order_id);
 
-            // potentially add code to remove order from the actual tree
+            // update counters
+            if (side == Side::BUY) {
+                --bid_count_;
+            } else {
+                --ask_count_;
+            }
+            --total_orders_;
+
             return true;
         }
     }
@@ -69,7 +81,65 @@ bool BTreeOrderBook::cancel_order(Order::OrderId order_id) {
 
 std::vector<Trade> BTreeOrderBook::match_orders() {
     std::vector<Trade> trades;
-    // TODO: Implement order matching
+
+    while (true) {
+        // get best bid and ask prices
+        double best_bid_price = get_best_bid();
+        double best_ask_price = get_best_ask();
+
+        // check if prices cross
+        if (best_bid_price == 0 || best_ask_price == 0 || best_bid_price < best_ask_price) {
+            break;
+        }
+
+        // get price levels
+        PriceLevel* bid_level = find_price_level(buy_tree_root_, best_bid_price);
+        PriceLevel* ask_level = find_price_level(sell_tree_root_, best_ask_price);
+
+        if (bid_level == nullptr || ask_level == nullptr || bid_level->orders.empty() || ask_level->orders.empty()) {
+            break;
+        }
+
+        // match orders at these levels
+        auto& buy_order = bid_level->orders.front();
+        auto& sell_order = ask_level->orders.front();
+
+        // determine trade quantity
+        double trade_qty = min(buy_order->get_remaining_quantity(), sell_order->get_remaining_quantity());
+
+        // create trade - using ask price
+        Trade trade(
+            generate_trade_id(),
+            buy_order->get_order_id(),
+            sell_order->get_order_id(),
+            best_ask_price,
+            trade_qty,
+            symbol_
+        );
+        trades.push_back(trade);
+
+        // update order quantities
+        buy_order->set_remaining_quantity(buy_order->get_remaining_quantity() - trade_qty);
+        sell_order->set_remaining_quantity(sell_order->get_remaining_quantity() - trade_qty);
+
+        // remove filled orders
+        if (buy_order->is_filled()) {
+            bid_level->orders.pop_front();
+            order_location_.erase(buy_order->get_order_id());
+            --bid_count_;
+            --total_orders_;
+        }
+
+        if (sell_order->is_filled()) {
+            ask_level->orders.pop_front();
+            order_location_.erase(sell_order->get_order_id());
+            --ask_count_;
+            --total_orders_;
+        }
+
+        // increment total trades
+        ++total_trades_;
+    }
     return trades;
 }
 
@@ -96,14 +166,14 @@ size_t BTreeOrderBook::get_total_orders() const {
 std::vector<OrderBook::Level> BTreeOrderBook::get_bid_levels(size_t max_levels) const {
     std::vector<Level> levels;
     size_t count = 0;
-    collect_levels(sell_tree_root_, levels, count, max_levels, true);
+    collect_levels(buy_tree_root_, levels, count, max_levels, true);
     return levels;
 }
 
 std::vector<OrderBook::Level> BTreeOrderBook::get_ask_levels(size_t max_levels) const {
     std::vector<Level> levels;
     size_t count = 0;
-    collect_levels(buy_tree_root_, levels, count, max_levels, false);
+    collect_levels(sell_tree_root_, levels, count, max_levels, false);
     return levels;
 }
 
@@ -113,6 +183,7 @@ void BTreeOrderBook::insert(BTreeNode*& root, double price, std::shared_ptr<Orde
         root = new BTreeNode();
         root->keys.emplace_back(price);
         root->keys.back().orders.push_back(order);
+        return;
     }
     // need to split
     if (root->keys.size() == max_keys_) {
@@ -274,7 +345,7 @@ void BTreeOrderBook::collect_levels(BTreeNode* node, std::vector<Level>& levels,
                 if (!priceLvl.orders.empty()) {
                     double qty = 0.0;
                     for (const auto &order : priceLvl.orders) {
-                        qty += order->get_quantity();
+                        qty += order->get_remaining_quantity();
                     }
                     levels.emplace_back(priceLvl.price, qty, priceLvl.orders.size());
                     count++;
@@ -283,12 +354,12 @@ void BTreeOrderBook::collect_levels(BTreeNode* node, std::vector<Level>& levels,
         }
         // if not reverse, add them forwards (looking for lowest price)
         else {
-            for (int i = int(node->keys.size()) - 1; i >= 0 && count < max_levels; --i) {
+            for (size_t i = 0; i < node->keys.size() && count < max_levels; ++i) {
                 PriceLevel &priceLvl = node->keys[i];
                 if (!priceLvl.orders.empty()) {
                     double qty = 0.0;
                     for (const auto &order : priceLvl.orders) {
-                        qty += order->get_quantity();
+                        qty += order->get_remaining_quantity();
                     }
                     levels.emplace_back(priceLvl.price, qty, priceLvl.orders.size());
                     count++;
@@ -311,5 +382,7 @@ void BTreeOrderBook::collect_levels(BTreeNode* node, std::vector<Level>& levels,
         }
     }
 }
+
+
 
 } // namespace order_matching

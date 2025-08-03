@@ -10,7 +10,10 @@ namespace order_matching {
 class BTreeOrderBook : public OrderBook {
 public:
     BTreeOrderBook(const std::string& symbol, size_t degree = 32);
-    ~BTreeOrderBook() {}
+    ~BTreeOrderBook() {
+        if (buy_tree_root_) delete buy_tree_root_;
+        if (sell_tree_root_) delete sell_tree_root_;
+    }
 
     // OrderBook interface
     bool add_order(std::shared_ptr<Order> order) override;
@@ -75,6 +78,7 @@ private:
     // Helper functions
     double find_best_price(BTreeNode* root, bool find_max) const;
     void collect_levels(BTreeNode* node, std::vector<Level>& levels, size_t& count, size_t max_levels, bool reverse) const;
+    // bool is_underflow(BTreeNode* node, bool is_buy_tree) const;
 };
 
 } // namespace order_matching
