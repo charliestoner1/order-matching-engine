@@ -44,7 +44,12 @@ private:
         std::vector<BTreeNode*> children;    // Child pointers
         bool is_leaf;
 
-        BTreeNode() : is_leaf(true) {}
+        BTreeNode() : is_leaf(true) {
+            // Pre-allocate capacity for better performance
+            keys.reserve(128);      // max_keys for degree 64
+            children.reserve(129);  // max_keys + 1
+        }
+
         ~BTreeNode() {
             for (auto child : children) {
                 delete child;
@@ -70,7 +75,8 @@ private:
     size_t total_trades_;
 
     // B-Tree operations
-    void insert(BTreeNode*& root, double price, std::shared_ptr<Order> order, bool is_buy_side);
+    void insert(BTreeNode*& root, double price, std::shared_ptr<Order> order);
+    int binary_search_price(const std::vector<PriceLevel>& keys, double price) const;
     BTreeNode* search(BTreeNode* root, double price) const;
     void split_child(BTreeNode* parent, int index);
     PriceLevel* find_price_level(BTreeNode* root, double price) const;

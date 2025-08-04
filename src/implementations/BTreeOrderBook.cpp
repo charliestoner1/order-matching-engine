@@ -1,4 +1,6 @@
 #include "BTreeOrderBook.h"
+
+#include <algorithm>
 using namespace std;
 namespace order_matching {
 
@@ -25,10 +27,10 @@ bool BTreeOrderBook::add_order(std::shared_ptr<Order> order) {
 
     // insert into appropriate tree
     if (order->get_side() == BUY) {
-        insert(buy_tree_root_, order->get_price(), order, true);
+        insert(buy_tree_root_, order->get_price(), order);
         ++bid_count_;
     } else {
-        insert(sell_tree_root_, order->get_price(), order, false);
+        insert(sell_tree_root_, order->get_price(), order);
         ++ask_count_;
     }
 
@@ -39,39 +41,41 @@ bool BTreeOrderBook::add_order(std::shared_ptr<Order> order) {
     return true;
 }
 
-bool BTreeOrderBook::cancel_order(Order::OrderId order_id) {
+    bool BTreeOrderBook::cancel_order(Order::OrderId order_id) {
     auto itr = order_location_.find(order_id);
-    // return false if order is not found
     if (itr == order_location_.end()) {
         return false;
     }
+
     Side side = itr->second.first;
     double price = itr->second.second;
 
-    PriceLevel* priceLvl;
-    if (side == Side::BUY) {
-        priceLvl = find_price_level(buy_tree_root_, price);
-    }
-    else {
-        priceLvl = find_price_level(sell_tree_root_, price);
-    }
-    if (priceLvl == nullptr) {
+    PriceLevel* priceLvl = find_price_level(
+        side == BUY ? buy_tree_root_ : sell_tree_root_, price);
+
+    if (!priceLvl) {
         return false;
     }
-    deque<shared_ptr<Order>>& orders = priceLvl->orders;
+
+    auto& orders = priceLvl->orders;
     for (auto it = orders.begin(); it != orders.end(); ++it) {
         if ((*it)->get_order_id() == order_id) {
-            (*it)->cancel(); // mark order as cancelled
+            (*it)->cancel();
             orders.erase(it);
             order_location_.erase(order_id);
 
-            // update counters
-            if (side == Side::BUY) {
+            if (side == BUY) {
                 --bid_count_;
             } else {
                 --ask_count_;
             }
             --total_orders_;
+
+            // Clean up empty price levels if needed
+            if (orders.empty()) {
+                // Note: In a production system, you'd remove empty nodes
+                // but for simplicity we'll leave them
+            }
 
             return true;
         }
@@ -81,6 +85,7 @@ bool BTreeOrderBook::cancel_order(Order::OrderId order_id) {
 
 std::vector<Trade> BTreeOrderBook::match_orders() {
     std::vector<Trade> trades;
+    trades.reserve(100);
 
     while (true) {
         // get best bid and ask prices
@@ -96,7 +101,7 @@ std::vector<Trade> BTreeOrderBook::match_orders() {
         PriceLevel* bid_level = find_price_level(buy_tree_root_, best_bid_price);
         PriceLevel* ask_level = find_price_level(sell_tree_root_, best_ask_price);
 
-        if (bid_level == nullptr || ask_level == nullptr || bid_level->orders.empty() || ask_level->orders.empty()) {
+        if (!bid_level || !ask_level || bid_level->orders.empty() || ask_level->orders.empty()) {
             break;
         }
 
@@ -108,7 +113,7 @@ std::vector<Trade> BTreeOrderBook::match_orders() {
         double trade_qty = min(buy_order->get_remaining_quantity(), sell_order->get_remaining_quantity());
 
         // create trade - using ask price
-        Trade trade(
+        trades.emplace_back(
             generate_trade_id(),
             buy_order->get_order_id(),
             sell_order->get_order_id(),
@@ -116,7 +121,6 @@ std::vector<Trade> BTreeOrderBook::match_orders() {
             trade_qty,
             symbol_
         );
-        trades.push_back(trade);
 
         // update order quantities
         buy_order->set_remaining_quantity(buy_order->get_remaining_quantity() - trade_qty);
@@ -165,6 +169,7 @@ size_t BTreeOrderBook::get_total_orders() const {
 
 std::vector<OrderBook::Level> BTreeOrderBook::get_bid_levels(size_t max_levels) const {
     std::vector<Level> levels;
+    levels.reserve(max_levels);
     size_t count = 0;
     collect_levels(buy_tree_root_, levels, count, max_levels, true);
     return levels;
@@ -172,20 +177,15 @@ std::vector<OrderBook::Level> BTreeOrderBook::get_bid_levels(size_t max_levels) 
 
 std::vector<OrderBook::Level> BTreeOrderBook::get_ask_levels(size_t max_levels) const {
     std::vector<Level> levels;
+    levels.reserve(max_levels);
     size_t count = 0;
     collect_levels(sell_tree_root_, levels, count, max_levels, false);
     return levels;
 }
 
 // B-Tree helper methods
-void BTreeOrderBook::insert(BTreeNode*& root, double price, std::shared_ptr<Order> order, bool is_buy_side) {
-    if (root == nullptr) {
-        root = new BTreeNode();
-        root->keys.emplace_back(price);
-        root->keys.back().orders.push_back(order);
-        return;
-    }
-    // need to split
+void BTreeOrderBook::insert(BTreeNode*& root, double price, std::shared_ptr<Order> order) {
+    // Handle root split if needed
     if (root->keys.size() == max_keys_) {
         BTreeNode* newRoot = new BTreeNode();
         newRoot->is_leaf = false;
@@ -193,113 +193,108 @@ void BTreeOrderBook::insert(BTreeNode*& root, double price, std::shared_ptr<Orde
         split_child(newRoot, 0);
         root = newRoot;
     }
-    // if the root is not full
+
+    // Insert into non-full node
     BTreeNode* current = root;
     while (!current->is_leaf) {
-        int i = int(current->keys.size()) - 1;
-        while (i >= 0 && price < current->keys[i].price) {
-            i--;
+        // Binary search for correct child
+        size_t i = binary_search_price(current->keys, price);
+
+        if (i < current->keys.size() && current->keys[i].price == price) {
+            current->keys[i].orders.push_back(order);
+            return;
         }
-        // gets correct index for insertion
-        i++;
-        // splits lower levels if needed
+
         if (current->children[i]->keys.size() == max_keys_) {
             split_child(current, i);
-            // one child moves up, so determine which is the right one
             if (price > current->keys[i].price) {
                 i++;
             }
         }
         current = current->children[i];
     }
-    // now at leaf node
-    int i = int(current->keys.size()) - 1;
-    while (i >= 0 && price < current->keys[i].price) {
-        i--;
-    }
-    if (i >= 0 && current->keys[i].price == price) {
+
+    // Insert into leaf
+    int i = binary_search_price(current->keys, price);
+
+    if (i < current->keys.size() && current->keys[i].price == price) {
         current->keys[i].orders.push_back(order);
-    }
-    // otherwise make a new price level
-    else {
-        PriceLevel newPrice(price);
-        newPrice.orders.push_back(order);
-        auto it = current->keys.begin() + i + 1;
-        current->keys.insert(it, newPrice);
+    } else {
+        PriceLevel newLevel(price);
+        newLevel.orders.push_back(order);
+        current->keys.insert(current->keys.begin() + i, newLevel);
     }
 }
 
-BTreeOrderBook::BTreeNode* BTreeOrderBook::search(BTreeNode* root, double price) const {
-    BTreeNode* current = root;
-    while (current != nullptr) {
-        size_t i = 0;
-        while (i < current->keys.size() && price > current->keys[i].price) {
-            i++;
+// Binary search helper for better cache performance
+int BTreeOrderBook::binary_search_price(const std::vector<PriceLevel>& keys, double price) const {
+    int left = 0;
+    int right = keys.size();
+
+    while (left < right) {
+        int mid = left + (right - left) / 2;
+        if (keys[mid].price < price) {
+            left = mid + 1;
+        } else {
+            right = mid;
         }
-        if (current->is_leaf) {
-            // only returns the node if its in a leaf node
-            if (i < current->keys.size() && price == current->keys[i].price) {
-                return current;
-            }
-            else {
-                // if leaf searched and price not found, does not exist
-                return nullptr;
-            }
-        }
-        current = current->children[i];
     }
-    // if root is nullptr
-    return nullptr;
+
+    return left;
 }
+
 
 void BTreeOrderBook::split_child(BTreeNode* parent, int index) {
-    BTreeNode* nodeToSplit = parent->children[index];
-    // always odd when splitting, move median up and make the two halves separate
-    int mid = nodeToSplit->keys.size()/2;
+    BTreeNode* child = parent->children[index];
+    int mid = child->keys.size() / 2;
+
     BTreeNode* newNode = new BTreeNode();
-    newNode->is_leaf = nodeToSplit->is_leaf;
+    newNode->is_leaf = child->is_leaf;
 
-    // if leaf node, make new price for guiding and move it up, maintaining the old price with orders in the leaves
-    if (nodeToSplit->is_leaf) {
-        newNode->keys.assign(nodeToSplit->keys.begin() + mid, nodeToSplit->keys.end());
-        // resizes full node so that it only contains the first half
-        nodeToSplit->keys.resize(mid);
-        // ensures that the internal nodes are simply keys for searching, all the orders are stored in the leaves
-        double newPrice = newNode->keys.front().price;
-        PriceLevel newKey(newPrice);
-        parent->keys.insert(parent->keys.begin() + index, newKey);
-        parent->children.insert(parent->children.begin() + index + 1, newNode);
+    // For leaf nodes, we need to keep the middle key in the original node
+    // For internal nodes, the middle key moves up to the parent
+    if (child->is_leaf) {
+        // Copy right half to new node (excluding middle)
+        newNode->keys.assign(child->keys.begin() + mid + 1, child->keys.end());
+
+        // Keep left half including middle in original node
+        child->keys.resize(mid + 1);
+
+        // Insert a copy of the middle key into parent
+        parent->keys.insert(parent->keys.begin() + index, child->keys[mid]);
+    } else {
+        // Save middle key
+        PriceLevel middleKey = child->keys[mid];
+
+        // Copy right half to new node (excluding middle)
+        newNode->keys.assign(child->keys.begin() + mid + 1, child->keys.end());
+        child->keys.resize(mid);
+
+        // Move children pointers
+        newNode->children.assign(child->children.begin() + mid + 1, child->children.end());
+        child->children.resize(mid + 1);
+
+        // Insert middle key into parent
+        parent->keys.insert(parent->keys.begin() + index, middleKey);
     }
-    // if internal node, move the price level up and no need to keep it  in the split nodes (no information)
-    else {
-        PriceLevel newKey = nodeToSplit->keys[mid];
-        newNode->keys.assign(nodeToSplit->keys.begin() + mid + 1, nodeToSplit->keys.end());
-        // resizes full node so that it only contains the first half
-        nodeToSplit->keys.resize(mid);
 
-        newNode->children.assign(nodeToSplit->children.begin() + mid + 1, nodeToSplit->children.end());
-        nodeToSplit->children.resize(mid + 1);
-
-        parent->keys.insert(parent->keys.begin() + index, newKey);
-        parent->children.insert(parent->children.begin() + index + 1, newNode);
-    }
+    parent->children.insert(parent->children.begin() + index + 1, newNode);
 }
 
+
 BTreeOrderBook::PriceLevel* BTreeOrderBook::find_price_level(BTreeNode* root, double price) const {
+    if (!root) return nullptr;
+
     BTreeNode* current = root;
-    while (current != nullptr) {
-        size_t i = 0;
-        while (i < current->keys.size() && price > current->keys[i].price) {
-            i++;
+    while (current) {
+        size_t i = binary_search_price(current->keys, price);
+
+        if (i < current->keys.size() && current->keys[i].price == price) {
+            return &current->keys[i];
         }
+
         if (current->is_leaf) {
-            if (i < current->keys.size() && price == current->keys[i].price) {
-                return &current->keys[i];
-            }
-            // if leaf searched and price not found, does not exist
-            else {
-                return nullptr;
-            }
+            return nullptr;
         }
 
         current = current->children[i];
@@ -313,24 +308,33 @@ double BTreeOrderBook::find_best_price(BTreeNode* root, bool find_max) const {
     if (root == nullptr) {
         return 0.0;
     }
+
     BTreeNode* current = root;
+
+    // navigate to the appropriate leaf
     while (!current->is_leaf) {
-        if (find_max) {
-            current = current->children.back();
+        if (current->children.empty()) {
+            break;
         }
-        else {
-            current = current->children.front();
-        }
+        current = find_max ? current->children.back() : current->children.front();
     }
-    if (current->keys.empty()) {
-        return 0.0;
-    }
+
+    // Find non-empty price level
     if (find_max) {
-        return current->keys.back().price;
+        for (int i = current->keys.size() - 1; i >= 0; --i) {
+            if (!current->keys[i].orders.empty()) {
+                return current->keys[i].price;
+            }
+        }
+    } else {
+        for (size_t i = 0; i < current->keys.size(); ++i) {
+            if (!current->keys[i].orders.empty()) {
+                return current->keys[i].price;
+            }
+        }
     }
-    else {
-        return current->keys.front().price;
-    }
+
+    return 0.0;
 }
 
 void BTreeOrderBook::collect_levels(BTreeNode* node, std::vector<Level>& levels, size_t& count, size_t max_levels, bool reverse) const {
@@ -341,7 +345,7 @@ void BTreeOrderBook::collect_levels(BTreeNode* node, std::vector<Level>& levels,
         // if reverse, add prices backwards (looking for highest price)
         if (reverse) {
             for (int i = int(node->keys.size()) - 1; i >= 0 && count < max_levels; --i) {
-                PriceLevel &priceLvl = node->keys[i];
+                const PriceLevel& priceLvl = node->keys[i];
                 if (!priceLvl.orders.empty()) {
                     double qty = 0.0;
                     for (const auto &order : priceLvl.orders) {
@@ -355,7 +359,7 @@ void BTreeOrderBook::collect_levels(BTreeNode* node, std::vector<Level>& levels,
         // if not reverse, add them forwards (looking for lowest price)
         else {
             for (size_t i = 0; i < node->keys.size() && count < max_levels; ++i) {
-                PriceLevel &priceLvl = node->keys[i];
+                const PriceLevel &priceLvl = node->keys[i];
                 if (!priceLvl.orders.empty()) {
                     double qty = 0.0;
                     for (const auto &order : priceLvl.orders) {
@@ -369,14 +373,13 @@ void BTreeOrderBook::collect_levels(BTreeNode* node, std::vector<Level>& levels,
     }
     // if not a leaf, recurse down to leaf nodes
     else {
-        int size = int(node->keys.size());
         if (reverse) {
-            for (int i = size; i >= 0 && count < max_levels; --i) {
+            for (int i = node->children.size() - 1; i >= 0 && count < max_levels; --i) {
                 collect_levels(node->children[i], levels, count, max_levels, reverse);
             }
         }
         else {
-            for (int i = 0; i <= size && count < max_levels; ++i) {
+            for (size_t i = 0; i < node->children.size() && count < max_levels; ++i) {
                 collect_levels(node->children[i], levels, count, max_levels, reverse);
             }
         }

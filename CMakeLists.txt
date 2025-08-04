@@ -1,67 +1,59 @@
-cmake_minimum_required(VERSION 3.14)
-project(OrderMatchingEngine VERSION 1.0.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.10)
+project(OrderMatchingEngine VERSION 1.0.0)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Set default build type if not specified
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
+# Compiler flags for maximum performance
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -mtune=native -flto -ffast-math -funroll-loops -fomit-frame-pointer -DNDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
+
+# Add additional warning flags
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
+
+# Include directories
+include_directories(${CMAKE_SOURCE_DIR}/src)
+
+add_subdirectory(benchmark)
+
+# Core library
+add_library(order_matching_core STATIC
+        src/core/OrderBook.cpp
+)
+
+# B-Tree implementation
+add_library(btree_orderbook STATIC
+        src/implementations/BTreeOrderBook.cpp
+)
+
+# Main executable
+add_executable(ordermatching
+        src/main.cpp
+)
+
+# Benchmark executable
+add_executable(benchmark
+        benchmark/OrderBookBenchmark.cpp
+)
+
+# Link libraries
+target_link_libraries(ordermatching
+        order_matching_core
+        btree_orderbook
+)
+
+target_link_libraries(benchmark
+        order_matching_core
+        btree_orderbook
+)
+
+# Enable Link Time Optimization for release builds
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set_property(TARGET ordermatching PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+    set_property(TARGET benchmark PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
-# Compiler flags
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    # Common flags
-    add_compile_options(-Wall -Wextra -Wpedantic)
-
-    # Release flags for maximum performance
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -DNDEBUG")
-
-    # Debug flags
-    set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG")
-
-    # Profile flags
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG")
-endif()
-
-# MSVC flags
-if(MSVC)
-    add_compile_options(/W4)
-    set(CMAKE_CXX_FLAGS_RELEASE "/O2 /DNDEBUG")
-endif()
-
-# Set output directories
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-
-# Add subdirectories
-add_subdirectory(src)
-add_subdirectory(external)
-
-# Optional components
-
-option(BUILD_BENCHMARKS "Build benchmarks" ON)
-option(BUILD_VISUALIZATION "Build visualization server" ON)
-
-
-
-if(BUILD_BENCHMARKS)
-    add_subdirectory(benchmarks)
-endif()
-
-if(BUILD_VISUALIZATION)
-    add_subdirectory(visualization/server)
-endif()
-
-# Print configuration
-message(STATUS "")
-message(STATUS "Order Matching Engine Configuration:")
-message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "  C++ Standard: ${CMAKE_CXX_STANDARD}")
-message(STATUS "  Build tests: ${BUILD_TESTS}")
-message(STATUS "  Build benchmarks: ${BUILD_BENCHMARKS}")
-message(STATUS "  Build visualization: ${BUILD_VISUALIZATION}")
-message(STATUS "")
+# Install targets
+install(TARGETS ordermatching DESTINATION bin)
+install(TARGETS benchmark DESTINATION bin)
