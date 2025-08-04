@@ -25,6 +25,15 @@ public:
         order_books_[symbol] = std::move(book);
     }
 
+    // Get OrderBook (needed for export)
+    OrderBook* get_order_book(const std::string& symbol) {
+        auto it = order_books_.find(symbol);
+        if (it != order_books_.end()) {
+            return it->second.get();
+        }
+        return nullptr;
+    }
+
     // Submit an order to the appropriate book
     bool submit_order(std::shared_ptr<Order> order) {
         auto it = order_books_.find(order->get_symbol());

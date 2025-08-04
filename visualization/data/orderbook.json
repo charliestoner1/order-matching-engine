@@ -1,0 +1,35 @@
+{
+  "symbol": "AAPL",
+  "bestBid": 149.79,
+  "bestAsk": 149.85,
+  "bids": [
+    {"price": 149.79, "quantity": 138.00},
+    {"price": 149.78, "quantity": 2570.00},
+    {"price": 149.77, "quantity": 1695.00},
+    {"price": 149.76, "quantity": 1077.00},
+    {"price": 149.75, "quantity": 2295.00},
+    {"price": 149.74, "quantity": 1669.00},
+    {"price": 149.73, "quantity": 996.00},
+    {"price": 149.72, "quantity": 1166.00},
+    {"price": 149.71, "quantity": 628.00},
+    {"price": 149.70, "quantity": 736.00}
+  ],
+  "asks": [
+    {"price": 149.85, "quantity": 230.00},
+    {"price": 149.86, "quantity": 74.00},
+    {"price": 149.88, "quantity": 704.00},
+    {"price": 149.90, "quantity": 237.00},
+    {"price": 149.91, "quantity": 1437.00},
+    {"price": 149.92, "quantity": 892.00},
+    {"price": 149.93, "quantity": 112.00},
+    {"price": 149.94, "quantity": 3327.00},
+    {"price": 149.96, "quantity": 2737.00},
+    {"price": 149.97, "quantity": 1206.00}
+  ],
+  "stats": {
+    "totalOrders": 902,
+    "bidCount": 438,
+    "askCount": 416,
+    "activeOrders": 854
+  }
+}

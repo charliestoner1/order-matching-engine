@@ -75,7 +75,8 @@ private:
     // Metrics
     size_t bid_count_;
     size_t ask_count_;
-    size_t total_orders_;
+    size_t total_orders_;                // Current active orders
+    size_t total_orders_processed_;      // Cumulative total
     size_t total_trades_;
 
     // B-Tree operations

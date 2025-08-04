@@ -11,6 +11,7 @@ BTreeOrderBook::BTreeOrderBook(const std::string& symbol, size_t degree)
       bid_count_(0),
       ask_count_(0),
       total_orders_(0),
+      total_orders_processed_(0),
       total_trades_(0) {
     symbol_ = symbol;
 
@@ -38,6 +39,7 @@ bool BTreeOrderBook::add_order(std::shared_ptr<Order> order) {
     order_location_[order->get_order_id()] = make_pair(order->get_side(), order->get_price());
 
     ++total_orders_;
+    ++total_orders_processed_;
     return true;
 }
 
@@ -164,7 +166,7 @@ size_t BTreeOrderBook::get_ask_count() const {
 }
 
 size_t BTreeOrderBook::get_total_orders() const {
-    return total_orders_;
+    return total_orders_processed_;
 }
 
 std::vector<OrderBook::Level> BTreeOrderBook::get_bid_levels(size_t max_levels) const {
