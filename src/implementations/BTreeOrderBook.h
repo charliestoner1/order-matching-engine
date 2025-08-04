@@ -44,6 +44,10 @@ private:
         std::vector<BTreeNode*> children;    // Child pointers
         bool is_leaf;
 
+        // links for leaf chaining
+        BTreeNode* next = nullptr;
+        BTreeNode* prev = nullptr;
+
         BTreeNode() : is_leaf(true) {
             // Pre-allocate capacity for better performance
             keys.reserve(128);      // max_keys for degree 64
@@ -83,7 +87,7 @@ private:
 
     // Helper functions
     double find_best_price(BTreeNode* root, bool find_max) const;
-    void collect_levels(BTreeNode* node, std::vector<Level>& levels, size_t& count, size_t max_levels, bool reverse) const;
+    void collect_levels(BTreeNode* node, std::vector<Level>& levels, size_t max_levels, bool reverse) const;
     // bool is_underflow(BTreeNode* node, bool is_buy_tree) const;
 };
 

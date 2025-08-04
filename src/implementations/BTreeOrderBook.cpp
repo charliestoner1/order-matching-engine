@@ -41,7 +41,7 @@ bool BTreeOrderBook::add_order(std::shared_ptr<Order> order) {
     return true;
 }
 
-    bool BTreeOrderBook::cancel_order(Order::OrderId order_id) {
+bool BTreeOrderBook::cancel_order(Order::OrderId order_id) {
     auto itr = order_location_.find(order_id);
     if (itr == order_location_.end()) {
         return false;
@@ -170,16 +170,14 @@ size_t BTreeOrderBook::get_total_orders() const {
 std::vector<OrderBook::Level> BTreeOrderBook::get_bid_levels(size_t max_levels) const {
     std::vector<Level> levels;
     levels.reserve(max_levels);
-    size_t count = 0;
-    collect_levels(buy_tree_root_, levels, count, max_levels, true);
+    collect_levels(buy_tree_root_, levels, max_levels, true);
     return levels;
 }
 
 std::vector<OrderBook::Level> BTreeOrderBook::get_ask_levels(size_t max_levels) const {
     std::vector<Level> levels;
     levels.reserve(max_levels);
-    size_t count = 0;
-    collect_levels(sell_tree_root_, levels, count, max_levels, false);
+    collect_levels(sell_tree_root_, levels, max_levels, false);
     return levels;
 }
 
@@ -260,9 +258,18 @@ void BTreeOrderBook::split_child(BTreeNode* parent, int index) {
         // Keep left half including middle in original node
         child->keys.resize(mid + 1);
 
+        // link newNode to leaf chain. Links are only for leaf nodes
+        newNode->next = child->next;
+        if (newNode->next != nullptr) {
+            newNode->next->prev = newNode;
+        }
+        child->next = newNode;
+        newNode->prev = child;
+
         // Insert a copy of the middle key into parent
         parent->keys.insert(parent->keys.begin() + index, child->keys[mid]);
     } else {
+        // keys only store routing data when a non-leaf is splitting
         // Save middle key
         PriceLevel middleKey = child->keys[mid];
 
@@ -337,51 +344,52 @@ double BTreeOrderBook::find_best_price(BTreeNode* root, bool find_max) const {
     return 0.0;
 }
 
-void BTreeOrderBook::collect_levels(BTreeNode* node, std::vector<Level>& levels, size_t& count, size_t max_levels, bool reverse) const {
-    if (count >= max_levels || node == nullptr) {
+void BTreeOrderBook::collect_levels(BTreeNode* node, std::vector<Level>& levels, size_t max_levels, bool reverse) const {
+    size_t count = 0;
+    if (node == nullptr) {
         return;
     }
-    if (node->is_leaf) {
-        // if reverse, add prices backwards (looking for highest price)
+    // find the necessary node based on which order
+    BTreeNode* leaf = node;
+    while (leaf != nullptr && !leaf->is_leaf) {
         if (reverse) {
-            for (int i = int(node->keys.size()) - 1; i >= 0 && count < max_levels; --i) {
-                const PriceLevel& priceLvl = node->keys[i];
-                if (!priceLvl.orders.empty()) {
-                    double qty = 0.0;
-                    for (const auto &order : priceLvl.orders) {
-                        qty += order->get_remaining_quantity();
-                    }
-                    levels.emplace_back(priceLvl.price, qty, priceLvl.orders.size());
-                    count++;
-                }
-            }
+            leaf = leaf->children.back();
         }
-        // if not reverse, add them forwards (looking for lowest price)
         else {
-            for (size_t i = 0; i < node->keys.size() && count < max_levels; ++i) {
-                const PriceLevel &priceLvl = node->keys[i];
-                if (!priceLvl.orders.empty()) {
-                    double qty = 0.0;
-                    for (const auto &order : priceLvl.orders) {
-                        qty += order->get_remaining_quantity();
-                    }
-                    levels.emplace_back(priceLvl.price, qty, priceLvl.orders.size());
-                    count++;
-                }
-            }
+            leaf = leaf->children.front();
         }
     }
-    // if not a leaf, recurse down to leaf nodes
-    else {
+    // traverse the list if needed
+    while (leaf != nullptr && count < max_levels) {
+        // if backward then iterate backwards using prev pointers
         if (reverse) {
-            for (int i = node->children.size() - 1; i >= 0 && count < max_levels; --i) {
-                collect_levels(node->children[i], levels, count, max_levels, reverse);
+            for (int i = int(leaf->keys.size()) - 1; i >= 0 && count < max_levels; --i) {
+                const PriceLevel& priceLvl = leaf->keys[i];
+                if (!priceLvl.orders.empty()) {
+                    double qty = 0.0;
+                    for (const auto &order : priceLvl.orders) {
+                        qty += order->get_remaining_quantity();
+                    }
+                    levels.emplace_back(priceLvl.price, qty, priceLvl.orders.size());
+                    count++;
+                }
             }
+            leaf = leaf->prev;
         }
+        // if forward simply iterate through the list forward using next pointers
         else {
-            for (size_t i = 0; i < node->children.size() && count < max_levels; ++i) {
-                collect_levels(node->children[i], levels, count, max_levels, reverse);
+            for (int i = 0; i < int(leaf->keys.size()) && count < max_levels; ++i) {
+                const PriceLevel &priceLvl = leaf->keys[i];
+                if (!priceLvl.orders.empty()) {
+                    double qty = 0.0;
+                    for (const auto &order : priceLvl.orders) {
+                        qty += order->get_remaining_quantity();
+                    }
+                    levels.emplace_back(priceLvl.price, qty, priceLvl.orders.size());
+                    count++;
+                }
             }
+            leaf = leaf->next;
         }
     }
 }
